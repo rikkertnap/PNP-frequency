@@ -11,14 +11,14 @@ params = {
     "D_M":1e-10,        # Mg diffusion coefficient (m^2/s)
 
     # Mg-DNA kinetics
-    "k_on_D":1e7,#1e7,       # M^-1 s^-1
-    "k_off_D":1e4,#5e4      # s^-1
+    "k_on_D":1e7,       # M^-1 s^-1
+    "k_off_D":1e4,      # s^-1
 
     # Mg-ATP kinetics
-    "k_on_A":1.44e8,
-    "k_off_A":7e3,
+    "k_on_A":1.44e8,    # M^-1 s^-1
+    "k_off_A":7e3,      # s^-1
 
-    # concentrations
+    # concentrations in M
     "c_M":1e-3,
     "c_ATP":4e-3,
     "S_0":50e-3,
@@ -97,16 +97,15 @@ def compute_screening(params):
     c_Cl = params["c_Cl"]
 
     charge_sum = (
-        (2*e)**2 * c_M +
         (e)**2 * c_Na +
         (e)**2 * c_Cl
     ) 
-
+    # kappa_D only involved monovalent salt !!
     charge_sum *= (NA* 1000.0) 
 
     kappa_D = np.sqrt(charge_sum/(epsilon*kB*T))
 
-    kappa_M2 = (2*e)**2 * c_M * 1000* NA /(epsilon*kB*T)
+    kappa_M2 = (2*e)**2 * c_M * 1000.0 * NA /(epsilon*kB*T)
 
     return kappa_D, kappa_M2
 

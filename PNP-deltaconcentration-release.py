@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 
 extforce='electric'
+delta_phi_ext = 1
 
 
 # ---------------------------------------------------------
@@ -73,11 +74,10 @@ def compute_screening(params):
     c_Cl = params["c_Cl"]
 
     charge_sum = (
-        (2*e)**2 * c_M +
         (e)**2 * c_Na +
         (e)**2 * c_Cl
     )
-
+    # kappa_D only involved monovalent salt !!
     charge_sum *= (NA * 1000)
 
     kappa_D = np.sqrt(charge_sum / (epsilon * kB * T))
@@ -98,6 +98,7 @@ def Gamma_M(k, params):
 #  applied-field forcing
 # ---------------------------------------------------------
 def external_force(k, params):
+
     match extforce:
         case 'driven':
             S = np.array([-1.0, -0.1, -0.1])
@@ -107,7 +108,7 @@ def external_force(k, params):
             q_M = 2*e
             mu_M = params["D_M"] / (kB * T)
 
-            delta_phi = 0.001  # arbitrary normalization
+            delta_phi = delta_phi_ext  # arbitrary normalization
 
             S_M = - mu_M * q_M * params["c_M"] * k**2 * delta_phi
 
@@ -479,6 +480,61 @@ def plot_deviation_phase_unified(k, params):
 
     plt.show()
 
+# ---------------------------------------------------------
+# Compute phi_ext,max from susceptibilities
+# ---------------------------------------------------------
+
+def compute_phi_max(freq, k, params, eps_lin=0.1):
+
+    # reuse your existing solver
+    cM, cMB, cMA, _ = compute_concentrations_and_release(freq, k, params)
+
+    # susceptibilities (since phi_ext = 1)
+    chi_M  = cM
+    chi_MB = cMB
+    chi_MA = cMA
+
+    # reference concentrations
+    cM0   = params["c_M"]
+    cATP  = params["c_ATP"]
+    S0    = params["S_0"]
+
+    # bounds
+    phi_M  = eps_lin * cM0 / np.abs(chi_M)
+    phi_MB = eps_lin * S0  / np.abs(chi_MB)
+    phi_MA = eps_lin * cATP / np.abs(chi_MA)
+
+    # most restrictive bound
+    phi_min = np.minimum(np.minimum(phi_M, phi_MB), phi_MA)
+
+    return phi_M, phi_MB, phi_MA, phi_min
+
+
+# ---------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------
+
+def plot_phi_max(k, params):
+
+    freq = np.logspace(0, 5, 1000)
+
+    phi_M, phi_MB, phi_MA, phi_min = compute_phi_max(freq, k, params)
+
+    plt.figure()
+    plt.loglog(freq, phi_M,  label="phi_max (free Mg)")
+    plt.loglog(freq, phi_MB, label="phi_max (DNA-bound)")
+    plt.loglog(freq, phi_MA, label="phi_max (ATP-bound)")
+    plt.loglog(freq, phi_min, 'k--', label="min (true bound)")
+
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("delta phi_ext,max (V)")
+    plt.title("Linearity bounds from susceptibilities")
+    plt.legend()
+    plt.grid(True)
+
+    plt.show()
+
+
 
 # ---------------------------------------------------------
 # Run
@@ -494,4 +550,6 @@ if __name__ == "__main__":
     #plot_release(k, params)
     
     plot_concentrations_and_release(k, params)
-    
+
+    plot_phi_max(k, params)
+

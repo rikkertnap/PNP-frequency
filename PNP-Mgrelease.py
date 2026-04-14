@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 
 extforce='electric'
 
+delta_phi_ext = 0.0000000001
 
 # ---------------------------------------------------------
-# Physical parameters (same as your setup)
+# Physical parameters 
 # ---------------------------------------------------------
 
 params = {
@@ -15,7 +16,7 @@ params = {
     "k_off_D":1e4,
     "k_on_A": 1.44e8,
     "k_off_A": 7e3,
-    "c_M":1e-3,
+    "c_M": 1e-3,
     "c_ATP":4e-3,
     "S_0":50e-3,
     "c_Na":0.15,
@@ -66,19 +67,23 @@ def compute_coefficients(params):
 
     return a_D, B_D, a_A, B_A
 
+# ---------------------------------------------------------
+# Debye screening
+# ---------------------------------------------------------
+
 
 def compute_screening(params):
     c_M = params["c_M"]
     c_Na = params["c_Na"]
     c_Cl = params["c_Cl"]
 
+    # Kappa_D only involved monovalent salt !!
     charge_sum = (
-        (2*e)**2 * c_M +
         (e)**2 * c_Na +
         (e)**2 * c_Cl
     )
 
-    charge_sum *= (NA * 1000)
+    charge_sum *= (NA * 1000) # conversion  M=mol/l 
 
     kappa_D = np.sqrt(charge_sum / (epsilon * kB * T))
     kappa_M2 = (2*e)**2 * c_M * 1000 * NA / (epsilon * kB * T)
@@ -108,7 +113,7 @@ def external_force(k, params):
             q_M = 2*e
             mu_M = params["D_M"] / (kB * T)
 
-            delta_phi = 0.001  # arbitrary normalization
+            delta_phi = delta_phi_ext # arbitrary normalization
 
             S_M = - mu_M * q_M * params["c_M"] * k**2 * delta_phi
 
@@ -198,13 +203,15 @@ def plot_release(k, params):
     plt.show()
 
 
+
 # ---------------------------------------------------------
-# Run example
+# Run
 # ---------------------------------------------------------
 
 if __name__ == "__main__":
 
     R = 50e-9
     k = 2*np.pi / R
+
 
     plot_release(k, params)

@@ -19,12 +19,12 @@ epsilon = eps_r * eps0
 # ---------------------------------------------------------
 
 # Mg-DNA 
-k_on_D = 1e7#1e7   in 1/(Ms) 
-k_off_D = 1e4#5e4  in 1/s
+k_on_D = 1e7     #   in 1/(Ms) 
+k_off_D = 1e4     #  in 1/s
 
 # Mg-ATP
 k_on_A = 1.44e8   #  in 1/(Ms) 
-k_off_A = 7e3      #  in 1/s 
+k_off_A = 7e3     #  in 1/s 
 
 # concentrations in M
 c_M = 1e-3
@@ -73,12 +73,11 @@ B_A = k_off_A
 def debye_kappa():
 
     charge_sum = (
-        (2*e)**2 * c_M +
         (e)**2 * c_Na +
         (e)**2 * c_Cl
     )
-
-    charge_sum *= (NA* 1000.0) 
+    # kappa_D only involved monovalent salt !!
+    charge_sum *= (NA * 1000.0) 
 
     return np.sqrt(charge_sum/(epsilon*kB*T))
 

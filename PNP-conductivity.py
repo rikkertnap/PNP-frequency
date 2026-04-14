@@ -73,11 +73,10 @@ def compute_screening(params):
     c_Cl = params["c_Cl"]
 
     charge_sum = (
-        (2*e)**2 * c_M +
         (e)**2 * c_Na +
         (e)**2 * c_Cl
     )
-
+    # kappa_D only involved monovalent salt !!
     charge_sum *= (NA * 1000)
 
     kappa_D = np.sqrt(charge_sum / (epsilon * kB * T))
@@ -169,6 +168,54 @@ def compute_admittance(freq, k, params):
     return Y
 
 
+
+# ---------------------------------------------------------
+# Mg release (DNA vs ATP)
+# ---------------------------------------------------------
+
+def compute_release_components(freq, k, params):
+
+    a_D, B_D, a_A, B_A = compute_coefficients(params)
+    omega = 2 * np.pi * freq
+    Gamma = Gamma_M(k, params)
+
+    # Jacobian
+    J = np.array([
+        [-(Gamma + a_D + a_A), B_D, B_A],
+        [a_D, -B_D, 0],
+        [a_A, 0, -B_A]
+    ])
+
+    eigvals, V = np.linalg.eig(J)
+    W = np.linalg.inv(V)
+
+    S = external_force(k, params)
+
+    R_total = np.zeros_like(freq, dtype=complex)
+    R_DNA = np.zeros_like(freq, dtype=complex)
+    R_ATP = np.zeros_like(freq, dtype=complex)
+
+    for i in range(3):
+
+        lambda_i = eigvals[i]
+        v_i = V[:, i]
+        w_i = W[i, :]
+
+        A_i = np.dot(w_i, S)
+
+        v_M, v_B, v_A = v_i
+
+        C_D = B_D * v_B - a_D * v_M
+        C_A = B_A * v_A - a_A * v_M
+
+        R_total += (A_i * (C_D + C_A)) / (1j*omega - lambda_i)
+        R_DNA += (A_i * C_D) / (1j*omega - lambda_i)
+        R_ATP += (A_i * C_A) / (1j*omega - lambda_i)
+
+    return R_total, R_DNA, R_ATP
+
+
+
 # ---------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------
@@ -178,6 +225,8 @@ def plot_admittance_conductance(k, params):
     freq = np.logspace(0, 5, 1000)
 
     Y = compute_admittance(freq, k, params)
+    R, R_DNA, R_ATP = compute_release_components(freq, k, params)
+
 
     G = np.real(Y)   # conductance
     B = np.imag(Y)   # susceptance
@@ -205,6 +254,17 @@ def plot_admittance_conductance(k, params):
     plt.ylabel("B(ω) = Im(Y)")
     plt.title("Susceptance vs frequency")
     plt.grid(True)
+
+     # --- Conductance and Release
+    plt.figure()
+    plt.semilogx(freq, G/np.max(G), label="Conductance")
+    plt.semilogx(freq, np.abs(R)/np.max(np.abs(R)), label="Mg release")
+    plt.xlabel("Frequency (Hz)")
+    plt.legend()
+    plt.title("Conductance and Release vs frequency")
+    plt.grid(True)
+
+
 
     plt.show()
 
