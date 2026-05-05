@@ -7,7 +7,7 @@ delta_phi_ext = 1
 
 
 # ---------------------------------------------------------
-# Physical parameters (same as your setup)
+# Physical parameters 
 # ---------------------------------------------------------
 
 params = {
@@ -35,41 +35,106 @@ epsilon = eps_r * eps0
 # Reaction + transport
 # ---------------------------------------------------------
 
-def solve_reaction(params):
+# def solve_reaction(params):
+#     k_on_D = params["k_on_D"]
+#     k_off_D = params["k_off_D"]
+#     S_0 = params["S_0"]
+#     c_M = params["c_M"]
+
+#     K_D = k_off_D / k_on_D
+#     theta = 1.0 / (1.0 + K_D / c_M)
+#     S_free = (1.0 - theta) * S_0
+
+#     return S_free
+
+
+# def compute_coefficients(params):
+#     k_on_D = params["k_on_D"]
+#     k_off_D = params["k_off_D"]
+#     k_on_A = params["k_on_A"]
+#     k_off_A = params["k_off_A"]
+
+#     c_M = params["c_M"]
+#     c_ATP = params["c_ATP"]
+
+#     S_free = solve_reaction(params)
+
+#     a_D = k_on_D * S_free
+#     B_D = k_on_D * c_M + k_off_D
+
+#     a_A = k_on_A * c_ATP
+#     B_A = k_off_A
+
+#     return a_D, B_D, a_A, B_A
+
+
+
+def solve_DNA_reaction(params):
+    """ 
+        Returns : S_free and theta
+        c_D = S_free: concentration of free phosphates that have not Mg bound
+        c_MB    :  concentration of phosphates that has bound with Mg 
+        theta_D : fraction of phospahte that is not bound with Mg
+    """
     k_on_D = params["k_on_D"]
     k_off_D = params["k_off_D"]
     S_0 = params["S_0"]
     c_M = params["c_M"]
 
     K_D = k_off_D / k_on_D
-    theta = 1.0 / (1.0 + K_D / c_M)
-    S_free = (1.0 - theta) * S_0
+    
+    #theta = 1.0 / (1.0 + K_D / c_M) =1 -theta_D
+    #S_free = (1.0 - theta) * S_0 
 
-    return S_free
+    theta_D = 1.0 / (1.0 + c_M/K_D)
+    c_D = theta_D * S_0
+    c_MB  = (1-theta_D) * S_0
+    
+    return c_D, c_MB, theta_D
 
+
+def solve_ATP_reaction(params):
+    """ 
+        Returns : c_A, c_MA, theta_A
+        c_A     : concentration of free ATP not bound with Mg 
+        c_MA    : concentration of ATP that has bound with Mg 
+        theta_A : fraction of ATP  that is not bound with Mg
+    """
+    k_on_A = params["k_on_A"]
+    k_off_A = params["k_off_A"]
+    c_ATP = params["c_ATP"]
+    c_M = params["c_M"]
+
+    K_A = k_off_A / k_on_A
+    theta_A = 1.0 / (1.0 + c_M / K_A)
+    c_A = theta_A * c_ATP
+    c_MA = (1.0 -theta_A) * c_ATP
+
+    return c_A, c_MA, theta_A
 
 def compute_coefficients(params):
-    k_on_D = params["k_on_D"]
+    k_on_D  = params["k_on_D"]
     k_off_D = params["k_off_D"]
-    k_on_A = params["k_on_A"]
+    k_on_A  = params["k_on_A"]
     k_off_A = params["k_off_A"]
 
     c_M = params["c_M"]
-    c_ATP = params["c_ATP"]
+   # c_ATP = params["c_ATP"]
 
-    S_free = solve_reaction(params)
+    c_D, _, _ = solve_DNA_reaction(params)
+    c_A, _, _ = solve_ATP_reaction(params)
 
-    a_D = k_on_D * S_free
+    a_D = k_on_D * c_D
     B_D = k_on_D * c_M + k_off_D
-
-    a_A = k_on_A * c_ATP
-    B_A = k_off_A
+    a_A = k_on_A * c_A
+    B_A = k_on_A * c_M + k_off_A
 
     return a_D, B_D, a_A, B_A
 
 
+
 def compute_screening(params):
-    c_M = params["c_M"]
+    c_M  = params["c_M"]
     c_Na = params["c_Na"]
     c_Cl = params["c_Cl"]
 
@@ -152,7 +217,7 @@ def compute_delta_conc_components(freq, k, params):
 
         v_M, v_B, v_A = v_i
 
-        delta_cM +=  (A_i * v_M) / (1j*omega - lambda_i)
+        delta_cM  += (A_i * v_M) / (1j*omega - lambda_i)
         delta_cMB += (A_i * v_B) / (1j*omega - lambda_i)
         delta_cMA += (A_i * v_A) / (1j*omega - lambda_i)
 
@@ -202,8 +267,8 @@ def compute_release_components(freq, k, params):
 
 
         R_total += (A_i * (C_D + C_A)) / (1j*omega - lambda_i)
-        R_DNA += (A_i * C_D) / (1j*omega - lambda_i)
-        R_ATP += (A_i * C_A) / (1j*omega - lambda_i)
+        R_DNA   += (A_i * C_D) / (1j*omega - lambda_i)
+        R_ATP   += (A_i * C_A) / (1j*omega - lambda_i)
 
     return R_total, R_DNA, R_ATP
 

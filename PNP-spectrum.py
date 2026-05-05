@@ -46,44 +46,134 @@ epsilon = eps_r * eps0
 # Derived parameters
 # ---------------------------------------------------------
 
-def solve_reaction(params):
+# def solve_reaction(params):
      
+#     k_on_D = params["k_on_D"]
+#     k_off_D = params["k_off_D"]
+#     S_0 = params["S_0"]
+#     c_M = params["c_M"]
+    
+#     K_D= k_off_D/k_on_D
+    
+#     theta = 1.0/(1.0 + K_D/c_M) 
+#     S_free = (1.0 -theta ) * S_0
+
+#     return S_free, theta
+
+# def compute_coefficients(params):
+
+#     k_on_D = params["k_on_D"]
+#     k_off_D = params["k_off_D"]
+
+#     k_on_A = params["k_on_A"]
+#     k_off_A = params["k_off_A"]
+
+#     c_M = params["c_M"]
+#     c_ATP = params["c_ATP"]
+#     S_0 = params["S_0"]
+
+#     # fraction of bound sites 
+
+
+#     S_free, theta = solve_reaction(params)
+
+#     a_D = k_on_D * S_free
+#     B_D = k_on_D * c_M + k_off_D
+
+#     a_A = k_on_A * c_ATP
+#     B_A = k_off_A
+
+#     return a_D, B_D, a_A, B_A
+
+
+def solve_DNA_reaction(params):
+    """ 
+        Returns : S_free and theta
+        c_D = S_free: concentration of free phosphates that have not Mg bound
+        c_MB    :  concentration of phosphates that has bound with Mg 
+        theta_D : fraction of phospahte that is not bound with Mg
+    """
     k_on_D = params["k_on_D"]
     k_off_D = params["k_off_D"]
     S_0 = params["S_0"]
     c_M = params["c_M"]
-    
-    K_D= k_off_D/k_on_D
-    
-    theta = 1.0/(1.0 + K_D/c_M) 
-    S_free = (1.0 -theta ) * S_0
 
-    return S_free, theta
+    K_D = k_off_D / k_on_D
+    
+    #theta = 1.0 / (1.0 + K_D / c_M) =1 -theta_D
+    #S_free = (1.0 - theta) * S_0 
+
+    theta_D = 1.0 / (1.0 + c_M/K_D)
+    c_D = theta_D * S_0
+    c_MB  = (1-theta_D) * S_0
+    
+    return c_D, c_MB, theta_D
+
+
+def solve_ATP_reaction(params):
+    """ 
+        Returns : c_A, c_MA, theta_A
+        c_A     : concentration of free ATP not bound with Mg 
+        c_MA    : concentration of ATP that has bound with Mg 
+        theta_A : fraction of ATP  that is not bound with Mg
+    """
+    k_on_A = params["k_on_A"]
+    k_off_A = params["k_off_A"]
+    c_ATP = params["c_ATP"]
+    c_M = params["c_M"]
+
+    K_A = k_off_A / k_on_A
+    theta_A = 1.0 / (1.0 + c_M / K_A)
+    c_A = theta_A * c_ATP
+    c_MA = (1.0 -theta_A) * c_ATP
+
+    return c_A, c_MA, theta_A
+
+
 
 def compute_coefficients(params):
-
-    k_on_D = params["k_on_D"]
+    k_on_D  = params["k_on_D"]
     k_off_D = params["k_off_D"]
-
-    k_on_A = params["k_on_A"]
+    k_on_A  = params["k_on_A"]
     k_off_A = params["k_off_A"]
 
     c_M = params["c_M"]
     c_ATP = params["c_ATP"]
-    S_0 = params["S_0"]
 
-    # fraction of bound sites 
+    c_D, _, _ = solve_DNA_reaction(params)
+    c_A, _, _ = solve_ATP_reaction(params)
 
-
-    S_free, theta = solve_reaction(params)
-
-    a_D = k_on_D * S_free
+    a_D = k_on_D * c_D
     B_D = k_on_D * c_M + k_off_D
-
     a_A = k_on_A * c_ATP
-    B_A = k_off_A
+    B_A = k_on_A * c_M #+ k_off_A
 
     return a_D, B_D, a_A, B_A
+
+# ---------------------------------------------------------
+# Debye screening
+# ---------------------------------------------------------
+
+
+def compute_screening(params):
+    c_M = params["c_M"]
+    c_Na = params["c_Na"]
+    c_Cl = params["c_Cl"]
+
+    # Kappa_D only involved monovalent salt !!
+    charge_sum = (
+        (e)**2 * c_Na +
+        (e)**2 * c_Cl
+    )
+
+    charge_sum *= (NA * 1000) # conversion  M=mol/l 
+
+    kappa_D = np.sqrt(charge_sum / (epsilon * kB * T))
+    kappa_M2 = (2*e)**2 * c_M * 1000 * NA / (epsilon * kB * T)
+
+    return kappa_D, kappa_M2
+
+
 
 
 # ---------------------------------------------------------
@@ -195,15 +285,16 @@ def plot_response(k,params):
 
 def plot_loop_dependence(params):
 
+    save_data= True
     plt.figure()
 
     D_M=[1e-11,1e-10,1e-9]
 
     a_D,B_D,a_A,B_A = compute_coefficients(params)
 
-    for DifM in D_M:
+    for DM in D_M:
 
-        params["D_M"]=DifM
+        params["D_M"]=DM
 
         R = np.linspace(20e-9,500e-9,300)
 
@@ -224,7 +315,6 @@ def plot_loop_dependence(params):
 
             slow=np.min(np.abs(eigvals))
 
-
             freq_slow.append(slow/(2*np.pi))
 
         
@@ -233,9 +323,41 @@ def plot_loop_dependence(params):
         plt.ylabel("Slow frequency (Hz)")
         plt.title("Slow relaxation vs loop size")
         plt.legend()
+
+        if save_data :
+            pts = list(zip(R*1e9,freq_slow))
+            fname="spectrum_DM_"+str(DM)+"_wrong.dat"    
+            np.savetxt(fname, pts)
+         
     plt.show()
 
  
+
+def plot_loop_dependence_compare():
+
+   
+    plt.figure()
+
+    D_M=[1e-11,1e-10,1e-9]
+
+
+    for DM in D_M:
+        fname="spectrum_DM_"+str(DM)+"_wrong.dat" 
+        data = np.loadtxt(fname)
+        R , freq_slow_wrong =  np.transpose(data)
+        fname="spectrum_DM_"+str(DM)+".dat" 
+        data = np.loadtxt(fname)
+        R , freq_slow =  np.transpose(data)
+
+        plt.plot(R,(freq_slow-freq_slow_wrong)/freq_slow,label=f"Dm {DM}")
+        plt.xlabel("Loop radius (nm)")
+        plt.ylabel("Relative Difference Slow frequency")
+        plt.title("Slow relaxation vs loop size")
+        plt.legend()
+
+         
+    plt.show()
+
 def test_freq(params):
 
     print("Derived Parameters:")
@@ -284,5 +406,7 @@ if __name__ == "__main__":
 
     # plot_response(k,params)
 
-    plot_loop_dependence(params)
+    #plot_loop_dependence(params)
+    
+    plot_loop_dependence_compare()
     #test_freq(params)

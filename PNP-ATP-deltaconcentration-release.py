@@ -23,14 +23,14 @@ params = {
     # diffusion constants  coefficient (m^2/s)
     "D_M":1e-11,
     "D_A":3e-10,
-    "D_MA":3e-10,# 3e-10,
+    "D_MA":3e-10,
     # k_on and k_off rates 
     "k_on_D":1e7,           #  in 1/(Ms) 
     "k_off_D":1e4,          #  in 1/s
     "k_on_A": 1.44e8,       #  in 1/(Ms) 
     "k_off_A": 7e3,         #  in 1/s
     # concentrations in M
-    "S_0":50e-3,  # total concentration DNA  S_0 = c_D +c_MB
+    "S_0":50e-3,  # total concentration DNA 
     "c_M": 1e-3,
     "c_ATP":4e-3, # total c_ATP = c_A + c_MA 
     "c_Na":0.15,
@@ -51,8 +51,7 @@ print(params)
 def solve_DNA_reaction(params):
     """ 
         Returns : S_free and theta
-        c_D = S_free: concentration of free phosphates that have not Mg bound
-        c_MB    :  concentration of phosphates that has bound with Mg 
+        S_free: concentration of phosphates that have not Mg bound 
         theta_D : fraction of phospahte that is not bound with Mg
     """
     k_on_D = params["k_on_D"]
@@ -66,17 +65,15 @@ def solve_DNA_reaction(params):
     #S_free = (1.0 - theta) * S_0 
 
     theta_D = 1.0 / (1.0 + c_M/K_D)
-    c_D = theta_D * S_0
-    c_MB  = (1.0-theta_D) * S_0
+    S_free = theta_D * S_0
     
-    return c_D, c_MB, theta_D
+    return S_free, theta_D
 
 
 def solve_ATP_reaction(params):
     """ 
         Returns : c_A, c_MA, theta_A
-        c_A     : concentration of free ATP not bound with Mg 
-        c_MA    : concentration of ATP that has bound with Mg 
+        c_free: concentration of ATP that has not Mg bound 
         theta_A : fraction of ATP  that is not bound with Mg
     """
     k_on_A = params["k_on_A"]
@@ -102,17 +99,19 @@ def compute_coefficients(params):
     k_off_A = params["k_off_A"]
     c_M = params["c_M"]
 
-    c_D, _ , _=  solve_DNA_reaction(params)
+    S_free, _ =  solve_DNA_reaction(params)
     c_A, _ , _= solve_ATP_reaction(params)
 
 
-    a_D = k_on_D * c_D
+    a_D = k_on_D * S_free
     B_D = k_on_D * c_M + k_off_D
     a_A = k_on_A * c_A
     B_A = k_off_A
     alpha_A = k_on_A * c_M
 
     return a_D, B_D, a_A, B_A, alpha_A
+
+
 
 
 def compute_screening(params):
@@ -342,7 +341,7 @@ def analytic_Deff_corrected(k, params):
     # ---- trapping factors ----
     theta_D = aD / BD
     theta_A = aA / (BA + alphaA)
-    ZM = 1 + theta_D + theta_A * (1-Fk)
+    ZM = 1 + theta_D + theta_A * Fk
 
     # ---- final corrected Deff ----
     Deff = (D_M + D_el + Fk * aA  / k**2 ) / ZM
@@ -350,6 +349,121 @@ def analytic_Deff_corrected(k, params):
     print(Deff,D_M,D_el,Fk,Lambda_A,BA)
 
     return Deff,Fk
+
+
+
+def compute_release_components(freq, k, params):
+
+    D_M, D_A, D_MA = params["D_M"], params["D_A"], params["D_MA"]
+    a_D, B_D, a_A, B_A, alpha_A = compute_coefficients(params)
+    qM, qA, qMA = params["qM"], params["qA"], params["qMA"]
+
+    kBT = kB * T
+
+    omega = 2 * np.pi * freq
+
+    # concentrations  number density
+    cM0 = params["c_M"]
+    cA0, cMA0, _ = solve_ATP_reaction(params)
+   
+
+    J = build_J(k, params)
+    eigvals, eigvecs = eig(J)
+    w = np.linalg.inv(eigvecs)
+
+
+    u_A = np.array([-alpha_A, -a_A, B_A, 0])
+    u_D = np.array([-a_D, 0, 0, B_D])
+
+    S = -k**2 * delta_phi_ext * np.array([
+        D_M*qM*cM0/kBT,
+        D_A*qA*cA0/kBT,
+        D_MA*qMA*cMA0/kBT,
+        0
+    ])
+
+    R_ATP = np.zeros_like(freq, dtype=complex)
+    R_DNA = np.zeros_like(freq, dtype=complex)
+
+    for i in range(4):
+        vi = eigvecs[:, i]
+        wi = w[i, :]
+
+        Ai = np.dot(wi, S)
+
+        contrib = Ai / (1j*omega - eigvals[i])
+
+        R_ATP += contrib * np.dot(u_A, vi)
+        R_DNA += contrib * np.dot(u_D, vi)
+
+    R_total = R_ATP + R_DNA
+    #
+    print("---- Numeric check diagnostics ----")
+    for i in range(4):
+        for j in range(4):
+            print(i, j, np.dot(w[i,:], eigvecs[:,j]))
+
+    return R_total, R_DNA, R_ATP
+
+
+#---------------------------------------------------------
+# change of delta cM delta cMB and delta cMA
+# ---------------------------------------------------------
+
+def compute_delta_conc_components(freq, k, params):
+
+    D_M, D_A, D_MA = params["D_M"], params["D_A"], params["D_MA"]
+    qM, qA, qMA = params["qM"], params["qA"], params["qMA"]
+    
+    omega = 2 * np.pi * freq
+    
+    J = build_J(k, params)
+
+    eigvals, V = np.linalg.eig(J)
+    W = np.linalg.inv(V)
+    
+    # concentrations number density
+    cM0 = params["c_M"]
+    cA0, cMA0, _ = solve_ATP_reaction(params)
+
+    kBT = kB * T
+
+    S = -k**2 * delta_phi_ext * np.array([
+        D_M*qM*cM0/kBT,
+        D_A*qA*cA0/kBT,
+        D_MA*qMA*cMA0/kBT,
+        0
+    ])
+
+    
+    delta_cM   = np.zeros_like(freq, dtype=complex)
+    delta_cMB  = np.zeros_like(freq, dtype=complex)
+    delta_cMA  = np.zeros_like(freq, dtype=complex)
+    delta_cA   = np.zeros_like(freq, dtype=complex)
+
+    for i in range(3):
+
+        lambda_i = eigvals[i]
+        v_i = V[:, i]
+        w_i = W[i, :]
+
+        A_i = np.dot(w_i, S)
+
+        v_M, v_A,  v_MA, v_MB = v_i
+
+        delta_cM +=  (A_i * v_M) / (1j*omega - lambda_i)
+        delta_cA +=  (A_i * v_A) / (1j*omega - lambda_i)
+        delta_cMA += (A_i * v_MA) / (1j*omega - lambda_i)
+        delta_cMB += (A_i * v_MB) / (1j*omega - lambda_i)
+    
+    return delta_cM, delta_cA, delta_cMA, delta_cMB
+
+
+
+
+# ---------------------------------------------------------
+# Plot
+# ---------------------------------------------------------
 
 def plot_Deff_compare_corr(params):
 
@@ -435,9 +549,7 @@ def plot_phase_diagram():
     plt.colorbar(label="Pi = D_A / D_M_eff")
     plt.show()
 
-# ---------------------------------------------------------
-# Plot
-# ---------------------------------------------------------
+
 
 def plot_Deff(params):
 
@@ -469,8 +581,10 @@ def plot_loop_dependence(params):
     plt.figure()
 
     D_M=[1e-11,1e-10,1e-9]
-    #D_A=[1e-10] 
-    D_A=[1e-12,1e-11,1e-10]
+    D_A=[1e-14,1e-13,1e-12,1e-11,1e-10]
+
+    D_M=[params["D_M"]]
+    D_A=[params["D_A"]]
 
     for DifM in D_M:
         for DifA in D_A:
@@ -493,6 +607,29 @@ def plot_loop_dependence(params):
             plt.title("Slow relaxation vs loop size")
             plt.legend()
     plt.show()
+
+
+ 
+def plot_loop_dependence_default(params):
+
+    plt.figure()
+    
+    R = np.linspace(20e-9,500e-9,300)
+    freq_slow=[]
+
+    for r in R:
+        k = 2*np.pi/r
+        Deff, eigvals, lam_slow  = compute_Deff(k, params)
+        freq_slow.append(np.abs(lam_slow)/(2*np.pi))
+
+            
+    plt.plot(R*1e9,freq_slow,label=f"Dm {params["D_M"]} Da {params["D_A"]}")
+    plt.xlabel("Loop radius (nm)")
+    plt.ylabel("Slow frequency (Hz)")
+    plt.title("Slow relaxation vs loop size")
+    plt.legend()
+    plt.show()
+  
 
 
 def plot_Deff_compare(params):
@@ -523,21 +660,91 @@ def plot_Deff_compare(params):
 
 
 
+def plot_release(k, params):
+
+    freq = np.logspace(0, 5, 1000)
+
+    R_total, R_DNA, R_ATP = compute_release_components(freq, k, params)
+
+    # ---- amplitude
+    plt.figure()
+    plt.loglog(freq, np.abs(R_total), label="Total")
+    plt.loglog(freq, np.abs(R_DNA), label="DNA")
+    plt.loglog(freq, np.abs(R_ATP), label="ATP")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Amplitude |R|")
+    plt.title("Mg release rate amplitude")
+    plt.legend()
+    plt.grid(True)
+
+    # ---- real part (more physical)
+    plt.figure()
+    plt.semilogx(freq, np.real(R_total), label="Total")
+    plt.semilogx(freq, np.real(R_DNA), label="DNA")
+    plt.semilogx(freq, np.real(R_ATP), label="ATP")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Re(R)")
+    plt.title("Mg release rate (real part)")
+    plt.legend()
+    plt.grid(True)
+
+    plt.show()
+
+
+def plot_delta_conc(k, params):
+
+    freq = np.logspace(0, 5, 1000)
+
+    delta_cM, delta_cA, delta_cMA, delta_cMB = compute_delta_conc_components(freq, k, params)
+
+    # ---- amplitude
+    plt.figure()
+    plt.loglog(freq, np.abs(delta_cM), label="cM")
+    plt.loglog(freq, np.abs(delta_cA), label="cA")
+    plt.loglog(freq, np.abs(delta_cMA), label="cMA")
+    plt.loglog(freq, np.abs(delta_cMB), label="cMB")
+
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel(" |delta c|")
+    plt.title("delta concentration amplitude")
+    plt.legend()
+
+    # ---- real part (more physical)
+    plt.figure()
+    plt.semilogx(freq, np.real(delta_cM), label="cM")
+    plt.semilogx(freq, np.real(delta_cA), label="cA")
+    plt.semilogx(freq, np.real(delta_cMA), label="cMA")
+    plt.semilogx(freq, np.real(delta_cMB), label="cMB")
+   
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Re( delta c)")
+    plt.title("delta concentration (real part)")
+    plt.legend()
+
+    plt.show()
+
 
 
 if __name__ == "__main__":
 
     #phase_diagram(params)
     #plot_phase_diagram()
+
     #plot_Deff(params)
-    #plot_loop_dependence(params)
+    # plot_loop_dependence(params)
     
-    D_M=[1e-11,1e-10,1e-9]
+   # D_M=[1e-11,1e-10,1e-9]
 
-    for DifM in D_M:
-        params["D_M"]=DifM
-        #plot_Deff_compare(params)
-        plot_Deff_compare_corr(params)
-    
 
+    #for DifM in D_M:
+    #    params["D_M"]=DifM
+    #    #plot_Deff_compare(params)
+    #    plot_Deff_compare_corr(params)
+
+    plot_loop_dependence_default(params)
+
+    R = 50e-9
+    k = 2*np.pi / R
+    plot_release(k, params)
+    plot_delta_conc(k, params)
    

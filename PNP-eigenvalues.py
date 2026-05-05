@@ -36,7 +36,7 @@ c_Na = 0.15
 c_Cl = 0.15
 
 # diffusion in m^2/s
-D_M = 1e-10
+D_M = 3e-11
 
 # wavenumber in 1/m
 k = 1e7
@@ -48,6 +48,41 @@ k = 1e7
 
 # fraction of bound sites 
 
+def solve_DNA_reaction(): #(params):
+    """ 
+        Returns : S_free and theta
+        c_D = S_free: concentration of free phosphates that have not Mg bound
+        c_MB    :  concentration of phosphates that has bound with Mg 
+        theta_D : fraction of phospahte that is not bound with Mg
+    """
+   
+    K_D = k_off_D / k_on_D
+    
+    #theta = 1.0 / (1.0 + K_D / c_M) =1 -theta_D
+    #S_free = (1.0 - theta) * S_0 
+
+    theta_D = 1.0 / (1.0 + c_M/K_D)
+    c_D = theta_D * S_0
+    c_MB  = (1-theta_D) * S_0
+    
+    return c_D, c_MB, theta_D
+
+
+def solve_ATP_reaction():
+    """ 
+        Returns : c_A, c_MA, theta_A
+        c_A     : concentration of free ATP not bound with Mg 
+        c_MA    : concentration of ATP that has bound with Mg 
+        theta_A : fraction of ATP  that is not bound with Mg
+    """
+
+    K_A = k_off_A / k_on_A
+    theta_A = 1.0 / (1.0 + c_M / K_A)
+    c_A = theta_A * c_ATP
+    c_MA = (1.0 -theta_A) * c_ATP
+
+    return c_A, c_MA, theta_A
+
 def solve_reaction():
     K_D= k_off_D/k_on_D
     
@@ -56,13 +91,19 @@ def solve_reaction():
 
     return S_free, theta
 
-S_free, theta = solve_reaction()
+S_free, _, theta_D = solve_DNA_reaction()
+
+# S_free, _ = solve_reaction
+c_A, c_MB, theta_A = solve_ATP_reaction()
 
 a_D = k_on_D * S_free
 B_D = k_on_D * c_M + k_off_D
 
-a_A = k_on_A * c_ATP
-B_A = k_off_A
+#a_A = k_on_A * c_ATP
+#B_A = k_off_A
+
+a_A = k_on_A * c_A
+B_A = k_on_A * c_M + k_off_A
 
 
 
@@ -147,8 +188,13 @@ freq_approx = np.abs(np.array([
 # Output
 # ---------------------------------------------------------
 print("Derived Parameters:")
+print("S_0     =", S_0," (M)")
 print("S_free  =", S_free ," (M)")
-print("theta   =", theta)
+print("theta_D =", theta_D)
+print("c_ATP   =", c_ATP ," (M)")
+print("c_A     =", c_A ," (M)")
+print("theta_A =", theta_A)
+
 print("Debye length  =",1e9/kappa_D," (nm)")
 print("Debye kappa   =", kappa_D, " (1/m)")
 print("Gamma_E =", Gamma_E, " (1/s)")
